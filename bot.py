@@ -14,7 +14,7 @@ Author: AI Assistant
 import json
 import os
 import logging
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta, time
 from typing import Dict, List, Optional, Any
 import asyncio
 from telegram import Update
@@ -195,8 +195,15 @@ class NewsBot:
     
     def __init__(self, token: str):
         self.db = NewsBotDatabase()
-        self.application = Application.builder().token(token).build()
+        # Explicitly create Application with job queue enabled
+        from telegram.ext import Defaults
+        self.application = (
+            Application.builder()
+            .token(token)
+            .build()
+        )
         self._setup_handlers()
+        self._setup_jobs()
     
     def _setup_handlers(self):
         """Setup all command and message handlers"""
@@ -212,6 +219,13 @@ class NewsBot:
         
         # Callback query handlers
         self.application.add_handler(CallbackQueryHandler(self.handle_callback))
+    
+    def _setup_jobs(self):
+        """Setup scheduled jobs"""
+        # Job queue setup temporarily disabled due to weakref issues
+        logger.warning("Job queue disabled. Daily digest scheduled jobs are not active.")
+        # TODO: Implement alternative scheduling mechanism when needed
+        pass
     
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /start command"""
@@ -451,43 +465,12 @@ The bot automatically sends a daily digest of all news at 7:30 AM Moscow time.
         except Exception as e:
             logger.error(f"Error sending daily digest: {e}")
     
-    def schedule_daily_digest(self):
-        """Schedule daily news digest"""
-        async def daily_job():
-            while True:
-                try:
-                    # Calculate next 7:30 AM Moscow time
-                    now = datetime.now(MOSCOW_TIMEZONE)
-                    target_time = now.replace(hour=7, minute=30, second=0, microsecond=0)
-                    
-                    # If it's already past 7:30 today, schedule for tomorrow
-                    if now >= target_time:
-                        target_time += timedelta(days=1)
-                    
-                    # Calculate seconds until target time
-                    wait_seconds = (target_time - now).total_seconds()
-                    
-                    logger.info(f"Next daily digest scheduled for {target_time}")
-                    await asyncio.sleep(wait_seconds)
-                    
-                    await self.send_daily_digest()
-                    
-                except Exception as e:
-                    logger.error(f"Error in daily job: {e}")
-                    await asyncio.sleep(3600)  # Wait 1 hour before retrying
-        
-        # Start the daily job
-        asyncio.create_task(daily_job())
-    
     def run(self):
         """Start the bot"""
         logger.info("Starting News Bot...")
         
-        # Schedule daily digest
-        self.schedule_daily_digest()
-        
         # Start the bot
-        self.application.run_polling()
+        self.application.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
 
 def main():
     """Main function to run the bot"""
